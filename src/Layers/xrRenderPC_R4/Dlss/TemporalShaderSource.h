@@ -177,8 +177,8 @@ inline std::string SemanticMember(const std::vector<Token> &tokens, const std::s
     return {};
 }
 
-// Alpha of the colour output, or "1" when it is not a float4.
-inline std::string ColorAlpha(const std::vector<Token> &tokens, const std::string &type, const std::string &semantic)
+// The float4 colour output, or empty when there is none.
+inline std::string ColorOutput(const std::vector<Token> &tokens, const std::string &type, const std::string &semantic)
 {
     const auto colour = [](const std::string &name)
     {
@@ -186,7 +186,7 @@ inline std::string ColorAlpha(const std::vector<Token> &tokens, const std::strin
                SemanticEqual(name, "COLOR") || SemanticEqual(name, "COLOR0");
     };
     if (!semantic.empty())
-        return type == "float4" && colour(semantic.substr(3)) ? "result.material.a" : "1";
+        return type == "float4" && colour(semantic.substr(3)) ? "result.material" : "";
     for (size_t i = 0; i + 2 < tokens.size(); ++i)
     {
         if (tokens[i].value != "struct" || tokens[i + 1].value != type || tokens[i + 2].value != "{")
@@ -194,9 +194,9 @@ inline std::string ColorAlpha(const std::vector<Token> &tokens, const std::strin
         const size_t end = Match(tokens, i + 2, "{", "}");
         for (size_t p = i + 5; p + 1 < end; ++p)
             if (tokens[p].value == ":" && colour(tokens[p + 1].value) && tokens[p - 2].value == "float4")
-                return "result.material." + tokens[p - 1].value + ".a";
+                return "result.material." + tokens[p - 1].value;
     }
-    return "1";
+    return {};
 }
 
 struct Variable
@@ -324,16 +324,22 @@ inline bool PixelSource(const std::string &source, const std::string &entry, std
         const std::string legacy_member = SemanticMember(tokens, type, "SV_Target3");
         const bool direct_legacy = SemanticEqual(semantic, " : SV_Target3");
         const bool has_legacy = direct_legacy || !legacy_member.empty();
+        const std::string colour = ColorOutput(tokens, type, semantic);
+        // An additive draw's alpha says nothing about what it shows (often 1 across black sprite areas, which made the
+        // whole quad reactive); weight it by the colour it adds instead.
+        const std::string coverage = colour.empty() ? "1"
+            : "aoe_additive ? max(" + colour + ".r, max(" + colour + ".g, " + colour + ".b)) : " + colour + ".a";
         adapted = source + "\ncbuffer AOE_MotionSettings : register(b12) { float4 aoe_motion_settings; };\n";
         adapted += "struct AOE_PixelOutput { " + type + " material" + semantic + "; float4 motion : SV_Target4; " +
                    (has_legacy ? "" : "float4 legacy_motion : SV_Target3;") + " };\n";
         adapted += "AOE_PixelOutput aoe_temporal_main(" + parameters +
                    "float4 aoe_current : AOE_CURRENT, float4 aoe_previous : AOE_PREVIOUS)\n{\n" +
                    "AOE_PixelOutput result;\nresult.material = " + entry + "(" + arguments + ");\n" +
-                   // Settings .w: bit 0 HUD, +2 no legacy target, +4 colour-blended draw.
-                   "float aoe_w = aoe_motion_settings.w;\nbool aoe_blended = aoe_w > 3.5;\n"
+                   // Settings .w: bit 0 HUD, +2 no legacy target, +4 colour-blended draw, +8 additive blend.
+                   "float aoe_w = aoe_motion_settings.w;\nbool aoe_additive = aoe_w > 7.5;\n"
+                   "aoe_w -= aoe_additive ? 8 : 0;\nbool aoe_blended = aoe_w > 3.5;\n"
                    "aoe_w -= aoe_blended ? 4 : 0;\n"
-                   "float aoe_alpha = aoe_blended ? saturate(" + ColorAlpha(tokens, type, semantic) + ") : 1;\n" +
+                   "float aoe_alpha = aoe_blended ? saturate(" + coverage + ") : 1;\n" +
                    "bool valid =aoe_motion_settings.z > 0.5 && all(isfinite(aoe_previous)) && "
                    "all(isfinite(aoe_current)) && aoe_previous.w > 0.00001 && aoe_current.w > 0.00001;\n" +
                    "float2 velocity = valid ? (aoe_current.xy / max(aoe_current.w, 0.00001) - aoe_previous.xy / "

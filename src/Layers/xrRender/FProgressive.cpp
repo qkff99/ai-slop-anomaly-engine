@@ -72,7 +72,13 @@ void FProgressive::Render(float LOD)
 {
 	PROF_EVENT("FProgressive::Render");
 #if RENDER!=R_R1
-	if (m_fast && RCache.RenderPhase(RImplementation.phase) == CRender::PHASE_SMAP)
+	// The fast geometry holds positions only; a shadow shader that reads more (alpha test) needs the full geometry.
+#if (RENDER==R_R3) || (RENDER==R_R4)
+	const bool fast_geometry_fits = RCache.vs_position_only;
+#else
+	const bool fast_geometry_fits = true;
+#endif
+	if (m_fast && fast_geometry_fits && RCache.RenderPhase(RImplementation.phase) == CRender::PHASE_SMAP)
 	{
 		int lod_id = iFloor((1.f - clampr(LOD, 0.f, 1.f)) * float(xSWI->count - 1) + 0.5f);
 		VERIFY(lod_id>=0 && lod_id<int(xSWI->count));

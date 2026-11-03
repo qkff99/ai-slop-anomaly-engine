@@ -460,6 +460,9 @@ public:
     // AOE Present pacing, shared by all renderer backends.
     void ResetFramePacing();
     void BeginFramePacing();
+    // Inactive or minimised: the game keeps running but nobody sees it. Such frames are paced at a fixed rate.
+    bool IsBackground() const;
+    bool PaceBackgroundFrame();
     bool HasPresentSlack() const;
     void BeforePresent();
     void AfterPresent(bool accepted);

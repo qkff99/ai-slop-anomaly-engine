@@ -70,6 +70,20 @@ void IConsole_Command::add_LRU_to_tips(vecTips& tips)
 
 // =======================================================
 
+// Stalls the main thread for longer than the hang limit, to check that the report appears.
+class CCC_WatchdogSelfTest : public IConsole_Command
+{
+public:
+	CCC_WatchdogSelfTest(LPCSTR N) : IConsole_Command(N) { bEmptyArgsHandled = TRUE; };
+
+	virtual void Execute(LPCSTR args)
+	{
+		extern int psWatchdogSeconds;
+		Msg("* [WATCHDOG] self test: blocking the main thread for %d s", psWatchdogSeconds + 8);
+		Sleep((psWatchdogSeconds + 8) * 1000);
+	}
+};
+
 class CCC_Quit : public IConsole_Command
 {
 public:
@@ -1072,6 +1086,8 @@ extern int g_ai_unlimited_ammo;
 float g_AimLookFactor = 1.f;
 
 int ps_framelimiter = 0;
+// Seconds the main loop may stand still before a hang report (stacks of all threads and a minidump) is written; 0 = never.
+int psWatchdogSeconds = 30;
 extern u32 g_crosshair_color;
 float g_freelook_z_offset;
 float g_ironsights_factor = 1.25f;
@@ -1317,6 +1333,8 @@ void CCC_Register()
 	CMD1(CCC_HideConsole, "hide");
 
 	CMD4(CCC_Integer, "r__framelimit", &ps_framelimiter, 0, 500);
+	CMD4(CCC_Integer, "watchdog_seconds", &psWatchdogSeconds, 0, 3600);
+	CMD1(CCC_WatchdogSelfTest, "watchdog_selftest");
 	CMD3(CCC_Mask, "rs_refresh_60hz", &psDeviceFlags, rsRefresh60hz);
 	CMD2(CCC_Color, "g_crosshair_color", &g_crosshair_color);
 	CMD4(CCC_Float, "mouse_sens_aim", &g_AimLookFactor, 0.01f, 5.0f);

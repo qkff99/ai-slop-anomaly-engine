@@ -170,6 +170,22 @@ local function add_options()
     end
 end
 
+-- The engine keeps r__detail_density within 0.2..1 (denser grass looks the same but costs far more); the base slider
+-- still starts at 0.04, which leaves its left part unreachable.
+local function fix_density_range()
+    for _, top in ipairs(ui_options.options) do
+        if top.id == "video" and top.gr then
+            for _, group in ipairs(top.gr) do
+                for _, row in ipairs(group.gr or {}) do
+                    if row.id == "detail_density" and row.min and row.min < 0.2 then
+                        row.min = 0.2
+                    end
+                end
+            end
+        end
+    end
+end
+
 function on_xml_read()
     if installed then return end
     installed = true
@@ -178,6 +194,7 @@ function on_xml_read()
     -- GAMMA's indexer also appends radio playlist controls.
     local original = ui_options.init_opt_coder
     ui_options.init_opt_coder = function(...)
+        fix_density_range()
         add_options()
         return original(...)
     end

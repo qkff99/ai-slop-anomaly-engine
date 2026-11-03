@@ -27,6 +27,8 @@ public:
     bool TemporalHistorySafe();
     // Colour blending without alpha-to-coverage: motion/reactive are weighted by the draw's alpha.
     bool TemporalBlended();
+    // Blended over the destination without occluding it (glow, sparks, anomaly flashes): coverage is the colour, not alpha.
+    bool TemporalAdditive();
 #endif
 #ifdef USE_DX11
     bool ShadowBatchStateSafe();

@@ -8,6 +8,8 @@ extern ECORE_API u32 ps_r_upscaler;
 extern ECORE_API u32 ps_r_fsr3_quality;
 extern ECORE_API u32 ps_r_dlss_preset;
 extern ECORE_API float ps_r_dlss_sharpness;
+extern ECORE_API float ps_r_upscaler_reactive;
+extern ECORE_API int ps_r_upscaler_reactive_sources;
 extern ECORE_API float ps_ssfx_fog_scattering;
 extern ECORE_API Fvector4 ps_ssfx_motionblur;
 extern ECORE_API Fvector4 ps_ssfx_taa;
@@ -235,6 +237,7 @@ extern ECORE_API int ps_r4_mt_sun_shadows;
 extern ECORE_API int ps_r4_mt_rain_shadows;
 extern ECORE_API int ps_r4_detail_instancing;
 extern ECORE_API Fvector3 ps_r4_detail_thin;
+extern ECORE_API int ps_r4_sun_receiver_clip;
 
 /* --- HDR10 parameters --- */
 extern ECORE_API float ps_r4_hdr10_whitepoint_nits; // r4-only

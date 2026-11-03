@@ -92,6 +92,11 @@ extern XRCORE_API xrDebug Debug;
 
 XRCORE_API void LogStackTrace(LPCSTR header);
 
+// For the freeze detecting thread, when the main loop has stopped advancing: writes <logs>/<app>_<user>_<time>_hang.mdmp (a
+// minidump with thread and handle data) and _hang.log (the call stack of every thread). `still_stalled` is asked before each
+// thread is suspended, so a stall that ends meanwhile cuts the report short.
+XRCORE_API void SaveHangReport(float seconds, bool (*still_stalled)());
+
 #include "xrDebug_macros.h"
 
 #endif // xrDebugH

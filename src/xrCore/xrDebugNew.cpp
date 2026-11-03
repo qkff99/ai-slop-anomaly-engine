@@ -767,6 +767,135 @@ void save_mini_dump (_EXCEPTION_POINTERS* pExceptionInfo)
 }
 #endif //-USE_OWN_MINI_DUMP
 
+// A hung main loop raises no exception, so the freeze detecting thread asks for the evidence itself. Nothing here uses the
+// game log: its lock may be the one that is stuck.
+#ifdef USE_OWN_MINI_DUMP
+#include <tlhelp32.h>
+namespace
+{
+class HangStackWalker : public StackWalker
+{
+    HANDLE file;
+
+public:
+    explicit HangStackWalker(HANDLE output)
+        : StackWalker(StackWalker::StackWalkOptions::RetrieveSymbol | StackWalker::StackWalkOptions::RetrieveLine |
+              StackWalker::StackWalkOptions::SymBuildPath), file(output) {}
+
+protected:
+    virtual void OnOutput(LPCSTR text)
+    {
+        DWORD written;
+        WriteFile(file, text, DWORD(strlen(text)), &written, nullptr);
+    }
+};
+
+void hang_file_path(string_path& path, LPCSTR extension)
+{
+    string64 stamp;
+    timestamp(stamp);
+    xr_strcpy(path, Core.ApplicationName);
+    xr_strcat(path, "_");
+    xr_strcat(path, Core.UserName);
+    xr_strcat(path, "_");
+    xr_strcat(path, stamp);
+    xr_strcat(path, "_hang");
+    xr_strcat(path, extension);
+    __try
+    {
+        if (FS.path_exist("$logs$"))
+            FS.update_path(path, "$logs$", path);
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER)
+    {
+    }
+}
+
+void hang_write(HANDLE file, const char* format, ...)
+{
+    char text[512];
+    va_list arguments;
+    va_start(arguments, format);
+    const int length = _vsnprintf_s(text, sizeof(text), _TRUNCATE, format, arguments);
+    va_end(arguments);
+    DWORD written;
+    if (length > 0)
+        WriteFile(file, text, DWORD(length), &written, nullptr);
+}
+}
+
+void SaveHangReport(float seconds, bool (*still_stalled)())
+{
+    string_path path;
+    // The dump first: it is the one artefact that survives whatever the stack walk runs into.
+    if (HMODULE dbghelp = LoadLibraryA("DBGHELP.DLL"))
+    {
+        MINIDUMPWRITEDUMP write = (MINIDUMPWRITEDUMP)GetProcAddress(dbghelp, "MiniDumpWriteDump");
+        hang_file_path(path, ".mdmp");
+        HANDLE dump = write ? CreateFileA(path, GENERIC_WRITE, FILE_SHARE_WRITE, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr)
+                            : INVALID_HANDLE_VALUE;
+        if (dump != INVALID_HANDLE_VALUE)
+        {
+            const MINIDUMP_TYPE flags = MINIDUMP_TYPE(MiniDumpNormal | MiniDumpWithDataSegs | MiniDumpWithHandleData |
+                MiniDumpWithThreadInfo | MiniDumpWithProcessThreadData | MiniDumpWithUnloadedModules |
+                MiniDumpWithIndirectlyReferencedMemory);
+            write(GetCurrentProcess(), GetCurrentProcessId(), dump, flags, nullptr, nullptr, nullptr);
+            CloseHandle(dump);
+        }
+    }
+
+    hang_file_path(path, ".log");
+    HANDLE report = CreateFileA(path, GENERIC_WRITE, FILE_SHARE_READ, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (report == INVALID_HANDLE_VALUE)
+        return;
+    hang_write(report, "The main loop made no progress for %.0f s (%s, pid %u). Stacks of all threads follow.\r\n", seconds,
+        Core.ApplicationName, GetCurrentProcessId());
+
+    const DWORD self = GetCurrentThreadId(), process = GetCurrentProcessId();
+    HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+    if (snapshot != INVALID_HANDLE_VALUE)
+    {
+        HangStackWalker walker(report);
+        THREADENTRY32 entry{};
+        entry.dwSize = sizeof(entry);
+        for (BOOL more = Thread32First(snapshot, &entry); more; more = Thread32Next(snapshot, &entry))
+        {
+            if (entry.th32OwnerProcessID != process || entry.th32ThreadID == self)
+                continue;
+            if (!still_stalled())
+            {
+                hang_write(report, "\r\nThe stall ended; the report stops here.\r\n");
+                break;
+            }
+            HANDLE thread = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_QUERY_INFORMATION, FALSE, entry.th32ThreadID);
+            if (!thread)
+                continue;
+            FILETIME created, exited, kernel, user;
+            if (GetThreadTimes(thread, &created, &exited, &kernel, &user))
+            {
+                const auto ms = [](const FILETIME& t) { return (u64(t.dwHighDateTime) << 32 | t.dwLowDateTime) / 10000; };
+                hang_write(report, "\r\n=== thread %u: user %llu ms, kernel %llu ms ===\r\n", entry.th32ThreadID, ms(user), ms(kernel));
+            }
+            else
+                hang_write(report, "\r\n=== thread %u ===\r\n", entry.th32ThreadID);
+            if (SuspendThread(thread) != DWORD(-1))
+            {
+                CONTEXT context{};
+                context.ContextFlags = CONTEXT_FULL;
+                if (GetThreadContext(thread, &context))
+                    walker.ShowCallstack(thread, &context);
+                ResumeThread(thread);
+            }
+            CloseHandle(thread);
+        }
+        CloseHandle(snapshot);
+    }
+    CloseHandle(report);
+}
+#else
+void SaveHangReport(float, bool (*)()) {}
+#endif //-USE_OWN_MINI_DUMP
+
 void format_message(LPSTR buffer, const u32& buffer_size)
 {
 	LPVOID message;

@@ -361,6 +361,13 @@ bool CDetailManager::BuildRenderCache(SlotRenderItems& items)
 
 void CDetailManager::UpdateVisibleM()
 {
+#ifndef _EDITOR
+    // Anthology HOTFIX6 (ed1dd8c1): the detail worker can arrive before the renderer has rebuilt HOM this frame; build
+    // it first (MT_RENDER runs once per frame). Lens frames keep the main-camera grass set instead of their own HOM.
+    const bool use_hom = !RDEVICE.m_SecondViewport.IsSVPFrame();
+    if (use_hom)
+        RImplementation.HOM.MT_RENDER();
+#endif
     m_visible_bounds.invalidate();
 	Fvector EYE = RDEVICE.vCameraPosition_saved;
 
@@ -426,7 +433,7 @@ void CDetailManager::UpdateVisibleM()
 					}
 				}
 #ifndef _EDITOR
-				if (!RImplementation.HOM.visible(S.vis))
+				if (use_hom && !RImplementation.HOM.visible(S.vis.box))
 				{
 					continue; // invisible-occlusion
 				}

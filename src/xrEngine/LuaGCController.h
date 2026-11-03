@@ -193,12 +193,25 @@ class LuaGCEmergencyPolicy
 	const void* vm = nullptr;
 	std::uint32_t cycles = 0;
 	std::size_t reference_heap = 0;
+	static constexpr std::size_t pressure_bytes = 300u * 1024u * 1024u;
 	unsigned cycle_frames = 0;
+	unsigned since_pressure = 0;
 	unsigned emergency_count = 0;
 	bool emergency_attempted = false;
 public:
 	void Reset() { *this = LuaGCEmergencyPolicy(); }
 	unsigned CycleFrames() const { return cycle_frames; }
+	// LuaJIT allocates from a fixed 512 MiB pool. A minimised game gets no render window, so a heap this large is collected
+	// at once, whatever the cycle says, but at most once per `interval` frames (live data cannot be collected away).
+	bool PoolPressure(const LuaGCInfo& info, unsigned interval = 60)
+	{
+		if (!info.vm) return false;
+		if (since_pressure < interval) ++since_pressure;
+		if (info.heap_bytes < pressure_bytes || since_pressure < interval) return false;
+		since_pressure = 0;
+		++emergency_count;
+		return true;
+	}
 	unsigned EmergencyCount() const { return emergency_count; }
 	std::size_t GrowthBytes(const LuaGCInfo& info) const
 	{

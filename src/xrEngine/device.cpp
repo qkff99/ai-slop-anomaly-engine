@@ -536,9 +536,12 @@ void OptickLoadGameCancel(LPCSTR reason)
 #endif
 
 CTimer FreezeTimer;
+extern int psWatchdogSeconds;
+static bool FreezeStillStalled() { return FreezeTimer.GetElapsed_sec() > 5.f; }
 void mt_FreezeThread(void *ptr) {
 	float freezetime = 0.f;
 	float repeatcheck = 500.f;
+	bool hang_reported = false;
 
 	while (true)
 	{
@@ -552,11 +555,25 @@ void mt_FreezeThread(void *ptr) {
 		repeatcheck = 500.f;
 
 		START_PROFILE("Check timer");
-		if (FreezeTimer.GetElapsed_sec()*1000.f > freezetime)
+		const float stalled_ms = FreezeTimer.GetElapsed_sec() * 1000.f;
+		if (stalled_ms > freezetime)
 		{
 			xrLogger::FlushLog();
 			repeatcheck = 5000.f;
 		}
+		// One report per stall; a loading screen is allowed far longer than the game.
+		const float hang_ms = (g_loading_events.size() ? 300.f : float(psWatchdogSeconds)) * 1000.f;
+		if (psWatchdogSeconds && stalled_ms > hang_ms)
+		{
+			if (!hang_reported && !IsDebuggerPresent())
+			{
+				hang_reported = true;
+				xrLogger::FlushLog();
+				SaveHangReport(stalled_ms / 1000.f, &FreezeStillStalled);
+			}
+		}
+		else
+			hang_reported = false;
 		STOP_PROFILE;
 
 		Sleep(repeatcheck);
@@ -796,6 +813,7 @@ void CRenderDevice::on_idle()
 	Statistic->RenderTOTAL.accum = Statistic->RenderTOTAL_Real.accum;
 #endif 
 	Device.isRendering = false;
+    const bool background_paced = PaceBackgroundFrame();
     StopLuaGCWindow(LuaGCStopReason::FrameBarrier);
 
     {
@@ -818,7 +836,7 @@ void CRenderDevice::on_idle()
     if (FrameTime < DSUpdateDelta)
         Sleep(DSUpdateDelta - FrameTime);
 #endif
-	if (!b_is_Active)
+	if (!b_is_Active && !background_paced)
 		Sleep(1);
 }
 

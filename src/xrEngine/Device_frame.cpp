@@ -12,6 +12,7 @@ extern bool IsMainMenuActive();
 
 namespace
 {
+    constexpr unsigned background_frame_rate = 30; // frames per second of a game nobody is looking at
     thread_local unsigned game_logic_depth = 0;
 
     struct GameLogicScope
@@ -61,12 +62,32 @@ void CRenderDevice::BeginFramePacing()
     }
     else
         frame_pacer_menu_rate = 0;
+    const bool background = IsBackground();
     const unsigned context = (menu ? 1u : 0u) | (paused ? 2u : 0u) |
         (b_is_Active ? 4u : 0u) | (psDeviceFlags.test(rsVSync) ? 8u : 0u) |
-        (m_SecondViewport.IsSVPActive() ? 16u : 0u);
+        (m_SecondViewport.IsSVPActive() ? 16u : 0u) | (background ? 32u : 0u);
     frame_pacer.Configure(CPU::QPC(), CPU::qpc_freq,
-        FramePacerClock::EffectiveRate(ps_framelimiter, menu || paused, frame_pacer_menu_rate), context);
+        background ? background_frame_rate : FramePacerClock::EffectiveRate(ps_framelimiter, menu || paused, frame_pacer_menu_rate),
+        context);
     frame_pacer_in_frame = true;
+}
+
+bool CRenderDevice::IsBackground() const
+{
+    return !b_is_Active || (m_hWnd && IsIconic(m_hWnd));
+}
+
+// An inactive game skips rendering, so Present never paces its frame. Without a cap the game logic ran hundreds of times
+// a second while the Lua collector, which works in the time the frame has left, got a single step per frame, and the Lua
+// heap outgrew its pool. Wait here instead, with the collector's window still open.
+bool CRenderDevice::PaceBackgroundFrame()
+{
+    if (b_is_Active || !frame_pacer_in_frame || !frame_pacer.Deadline())
+        return false;
+    PROF_EVENT("FramePacer.Background");
+    frame_pacer_wait.Until(frame_pacer.Deadline(), CPU::qpc_freq);
+    frame_pacer.Presented(CPU::QPC());
+    return true;
 }
 
 bool CRenderDevice::HasPresentSlack() const
@@ -361,7 +382,7 @@ void CRenderDevice::FinishLuaGCFrame()
     PROF_TAG("GC cycle", info.cycles);
     PROF_TAG("GC render continuation", lua_gc_render_resumed ? 1u : 0u);
     lua_gc_pressure_policy.Observe(info);
-    if (lua_gc_policy.Observe(info, u32(LuaGCCount)))
+    if (lua_gc_policy.Observe(info, u32(LuaGCCount)) || (IsBackground() && lua_gc_policy.PoolPressure(info)))
     {
         PROF_EVENT("GC.Emergency.Wait");
         lua_gc_emergency_work = true;

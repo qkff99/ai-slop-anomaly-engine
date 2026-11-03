@@ -353,7 +353,7 @@ void CRender::capture_sun_cascade(u32 cascade_ind, const xr_vector<ISpatialShare
         cascade.GMCascade.set_shadow_receiver_bounds(nullptr);
         cascade.GMCascade.traverse(pOutdoorSector, cascade.cull_frustum, cascade.cull_COP, cascade.cull_xform);
 #if RENDER == R_R4
-        const bool volumetric_sunshafts_need_full_shadow = !sun_cascade_needs_receiver_bounds(cascade_ind);
+        const bool volumetric_sunshafts_need_full_shadow = !sun_cascade_needs_receiver_bounds(cascade_ind) || !ps_r4_sun_receiver_clip;
         PROF_TAG("Receiver bounds skipped", volumetric_sunshafts_need_full_shadow);
         if (!volumetric_sunshafts_need_full_shadow)
         {

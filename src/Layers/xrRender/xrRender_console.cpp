@@ -22,6 +22,9 @@ xr_token fsr3_quality_token[] = {
 };
 u32 ps_r_dlss_preset = 0;
 float ps_r_dlss_sharpness = 0.0f;
+// Scales the reactive mask the upscaler gets from untracked/blended draws; 0 trusts history everywhere (diagnostic).
+float ps_r_upscaler_reactive = 1.0f;
+int ps_r_upscaler_reactive_sources = 3;
 xr_token dlss_preset_token[] = {
     {"default", 0}, {"j", 10}, {"k", 11}, {"l", 12}, {"m", 13}, {nullptr, 0}
 };
@@ -340,6 +343,8 @@ int ps_r4_mt_rain_shadows = 1;
 int ps_r4_detail_instancing = 2;
 // Grass thinning for r4_detail_instancing 2: from `x` metres the kept share falls linearly to `z` at `y` metres (z 1 = off).
 Fvector3 ps_r4_detail_thin = {25.f, 100.f, 0.2f};
+// Sun shadow casters are dropped when their shadow lands outside every visible receiver (0 = draw all of them).
+int ps_r4_sun_receiver_clip = 1;
 
 // HDR10 parameters
 float ps_r4_hdr10_whitepoint_nits = 400.0f; // r4-only, default = 400 nits
@@ -1525,6 +1530,7 @@ void xrRender_initconsole()
     CMD4(CCC_Integer, "r4_mt_sun_shadows", &ps_r4_mt_sun_shadows, 0, 1);
     CMD4(CCC_Integer, "r4_mt_rain_shadows", &ps_r4_mt_rain_shadows, 0, 1);
     CMD4(CCC_Integer, "r4_detail_instancing", &ps_r4_detail_instancing, 0, 2);
+    CMD4(CCC_Integer, "r4_sun_receiver_clip", &ps_r4_sun_receiver_clip, 0, 1);
     CMD4(CCC_Vector3, "r4_detail_thin", &ps_r4_detail_thin, Fvector3().set(0.f, 0.f, 0.05f), Fvector3().set(1000.f, 1000.f, 1.f));
 
     CMD4(CCC_Float,   "r4_hdr10_whitepoint_nits", &ps_r4_hdr10_whitepoint_nits,  10.0f, 10000.0f);
@@ -1604,6 +1610,8 @@ void xrRender_initconsole()
 	CMD3(CCC_Token, "r_fsr3_quality", &ps_r_fsr3_quality, fsr3_quality_token);
 	CMD3(CCC_Token, "r_dlss_preset", &ps_r_dlss_preset, dlss_preset_token);
 	CMD4(CCC_Float, "r_dlss_sharpness", &ps_r_dlss_sharpness, 0.0f, 1.0f);
+	CMD4(CCC_Float, "r_upscaler_reactive", &ps_r_upscaler_reactive, 0.0f, 1.0f);
+	CMD4(CCC_Integer, "r_upscaler_reactive_sources", &ps_r_upscaler_reactive_sources, 0, 3);
 #endif
 	CMD3(CCC_Mask,		"r2_gi",				&ps_r2_ls_flags,			R2FLAG_GI);
 	CMD4(CCC_Float,		"r2_gi_clip",			&ps_r2_GI_clip,				EPS,	0.1f	);

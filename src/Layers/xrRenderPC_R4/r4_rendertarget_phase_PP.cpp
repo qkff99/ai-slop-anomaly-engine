@@ -181,7 +181,7 @@ void CRenderTarget::phase_dlss_postprocess()
         RCache.set_c("aoe_reproject_sky", skyReprojection);
         const auto previousJitter = dlss::PreviousRasterJitter();
         RCache.set_c("aoe_resolve_jitter", (sceneJitter.x - previousJitter.x) / dlss::RenderWidth(),
-            (sceneJitter.y - previousJitter.y) / dlss::RenderHeight(), 0, 0);
+            (sceneJitter.y - previousJitter.y) / dlss::RenderHeight(), 0, ps_r_upscaler_reactive);
         RCache.set_CullMode(CULL_NONE);
         RCache.set_Stencil(FALSE);
         RCache.set_ColorWriteEnable();

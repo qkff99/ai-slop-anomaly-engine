@@ -41,6 +41,11 @@ bool dx10StateManager::TemporalBlended()
     ValidateBDesc();
     return !m_BDesc.AlphaToCoverageEnable && m_BDesc.RenderTarget[0].BlendEnable;
 }
+
+bool dx10StateManager::TemporalAdditive()
+{
+    return TemporalBlended() && m_BDesc.RenderTarget[0].DestBlend == D3D11_BLEND_ONE;
+}
 #endif
 
 void dx10StateManager::Reset()

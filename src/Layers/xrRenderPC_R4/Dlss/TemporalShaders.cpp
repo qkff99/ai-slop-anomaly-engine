@@ -59,7 +59,7 @@ u64 epoch = 0;
 bool scene_geometry = false;
 const void *current_visual = nullptr;
 const void *current_object = nullptr;
-ComPtr<ID3D11Buffer> settings[16];
+ComPtr<ID3D11Buffer> settings[32];
 ComPtr<ID3D11Buffer> raster_settings, camera_history;
 struct AnimationState
 {
@@ -862,13 +862,13 @@ void BeginFrame()
         memcpy(mapped_frame.pData, &packed_camera, sizeof(packed_camera));
         HW.pContext->Unmap(camera_history.Get(), 0);
     }
-    for (unsigned i = 0; i < 16; ++i)
+    for (unsigned i = 0; i < 32; ++i)
     {
         if (!settings[i])
             continue;
         const Fvector4 value{(current.x - previous.x) / dlss::RenderWidth(),
                              (current.y - previous.y) / dlss::RenderHeight(), float(i & 1),
-                             float((i >> 1) & 1) + (i & 4 ? 2.f : 0.f) + (i & 8 ? 4.f : 0.f)};
+                             float((i >> 1) & 1) + (i & 4 ? 2.f : 0.f) + (i & 8 ? 4.f : 0.f) + (i & 16 ? 8.f : 0.f)};
         D3D11_MAPPED_SUBRESOURCE mapped{};
         if (SUCCEEDED(HW.pContext->Map(settings[i].Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)))
         {
@@ -903,7 +903,7 @@ bool Bind(CBackend &backend, unsigned base_vertex, unsigned first, unsigned coun
         const auto found = programs.find(backend.ps);
         cached_pixel = found == programs.end() ? nullptr : found->second;
     }
-    if (!raster_settings || !settings[0] || !settings[15] || !RImplementation.Target->rt_aoe_motion)
+    if (!raster_settings || !settings[0] || !settings[31] || !RImplementation.Target->rt_aoe_motion)
         return reject("NO JITTER: motion resources not ready");
     auto &vertex = *cached_vertex;
     // The pixel shader cannot carry motion output (not an owned material, or no linked variant):
@@ -1069,7 +1069,11 @@ bool Bind(CBackend &backend, unsigned base_vertex, unsigned first, unsigned coun
     context->VSSetConstantBuffers(12, 1, &constants);
     const bool legacy_target = backend.pRT[3] == RImplementation.Target->rt_ssfx_motion_vectors->pRT;
     const bool blended = StateManager.TemporalBlended();
-    constants = settings[(legacy_target ? 0 : 4) + (current_hud ? 2 : 0) + (valid ? 1 : 0) + (blended ? 8 : 0)].Get();
+    const bool additive = blended && StateManager.TemporalAdditive();
+    // Diagnostic: r_upscaler_reactive_sources bit 1 = blended draws, bit 2 = opaque draws may write reactive.
+    const bool reactive = !valid && (ps_r_upscaler_reactive_sources & (blended ? 1 : 2));
+    constants = settings[(legacy_target ? 0 : 4) + (current_hud ? 2 : 0) + (reactive ? 0 : 1) + (blended ? 8 : 0) +
+                         (additive ? 16 : 0)].Get();
     context->PSSetConstantBuffers(12, 1, &constants);
     if (backend.temporal_bound_vertex != vertex.vertex.Get())
     {

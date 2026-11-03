@@ -83,7 +83,8 @@ void CDSGraphManager::r_dsgraph_insert_dynamic(dxRender_Visual *pVisual, Fmatrix
     
 
 	// HOM occlusion culling for dynamic objects
-    if (ps_r__common_flags.test(RFLAG_HOM_DYNAMIC))
+    // HUD transforms use the weapon camera, not the world HOM projection (Anthology HOTFIX6, ed1dd8c1).
+    if (!i_mask[CDSGraphManager::fl_hud] && ps_r__common_flags.test(RFLAG_HOM_DYNAMIC))
     {
 #if RENDER!=R_R1
         if (i_mask[CDSGraphManager::fl_normal])
